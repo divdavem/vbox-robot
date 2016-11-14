@@ -35,7 +35,18 @@ const wait = require("../wait");
 const calibrate = require("./calibration");
 const checkInt = require("./checkInt");
 
-const robotHTML = co.wrap(function *(ctx){
+const checkArray = function (data) {
+    if (!Array.isArray(data)) {
+        throw new Error(`Expected an array: ${data}`);
+    }
+    return data;
+};
+
+const checkString = function (data) {
+    return data + "";
+};
+
+const robotHTML = co.wrap(function * (ctx){
     if (! ctx.path.endsWith("/")) {
         ctx.redirect(`${ctx.path}/`);
         return;
@@ -45,7 +56,7 @@ const robotHTML = co.wrap(function *(ctx){
     ctx.body = yield readFile(path.join(__dirname,"..","browser", "index.html"));
 });
 
-const robotJS = co.wrap(function *(ctx){
+const robotJS = co.wrap(function * (ctx){
     ctx.set(commonHeaders);
     ctx.type = "js";
     const apiRootURL = url.format({
@@ -84,11 +95,11 @@ const apiWrapper = co.wrap(function * (ctx, next) {
     }
 });
 
-const mouseMove = co.wrap(function *(ctx) {
+const mouseMove = co.wrap(function * (ctx) {
     yield ctx.vm.mouseMove(checkInt(ctx.data[0]), checkInt(ctx.data[1]));
 });
 
-const smoothMouseMove = co.wrap(function *(ctx){
+const smoothMouseMove = co.wrap(function * (ctx){
     const data = ctx.data;
     const fromX = checkInt(data[0]);
     const fromY = checkInt(data[1]);
@@ -107,7 +118,7 @@ const smoothMouseMove = co.wrap(function *(ctx){
     yield ctx.vm.mouseMove(toX, toY);
 });
 
-const mouseButtonEvent = co.wrap(function *(buttonChangeFn, ctx){
+const mouseButtonEvent = co.wrap(function * (buttonChangeFn, ctx){
     const buttons = checkInt(ctx.data[0]);
     ctx.vm.mouseButtonsState = buttonChangeFn(buttons, ctx.vm.mouseButtonsState);
     yield ctx.vm.vboxMouse.putMouseEvent(0, 0, 0, 0, ctx.vm.mouseButtonsState);
@@ -141,7 +152,7 @@ const mouseReleaseButtonChange = function (buttons, mouseButtonsState) {
 };
 const mouseRelease = mouseButtonEvent.bind(null, mouseReleaseButtonChange);
 
-const mouseWheel = co.wrap(function *(ctx){
+const mouseWheel = co.wrap(function * (ctx){
     const vm = ctx.vm;
     yield vm.vboxMouse.putMouseEvent(0, 0, checkInt(ctx.data[0]), 0, vm.mouseButtonsState);
 });
@@ -149,6 +160,55 @@ const mouseWheel = co.wrap(function *(ctx){
 const keyboardSendScancodes = co.wrap(function * (ctx) {
     const scancodes = ctx.data[0];
     yield ctx.vm.vboxKeyboard.putScancodes(scancodes);
+});
+
+const pause = co.wrap(function * (ctx) {
+    const delay = checkInt(ctx.data[0]);
+    yield wait(delay);
+});
+
+const actionsMap = {
+    "mouseMove": mouseMove,
+    "smoothMouseMove": smoothMouseMove,
+    "mousePress": mousePress,
+    "mouseRelease": mouseRelease,
+    "mouseWheel": mouseWheel,
+    "keyboardSendScancodes": keyboardSendScancodes,
+    "calibrate": calibrate,
+    "pause": pause
+};
+
+const executeActions = co.wrap(function * (ctx) {
+    const actions = checkArray(ctx.data[0]);
+    const results = [];
+    for (let i = 0, l = actions.length; i < l; i++) {
+        let curAction = actions[i];
+        let success = true;
+        try {
+            curAction = checkArray(curAction);
+            const actionName = checkString(curAction[0]);
+            const actionFn = actionsMap.hasOwnProperty(actionName) ? actionsMap[actionName] : null;
+            if (!actionFn) {
+                if (actionName === "error") {
+                    success = false;
+                    ctx.body = checkString(curAction[1]);
+                } else {
+                    throw new Error(`Unknown action ${actionName}`);
+                }
+            } else {
+                ctx.data = curAction.slice(1);
+                yield actionFn(ctx);
+            }
+        } catch (e) {
+            success = false;
+            ctx.body = `${e} when executing ${ctx.path} [${i}] with data ${curAction}`;
+        }
+        results[i] = {
+            success: success,
+            result: ctx.body
+        };
+    }
+    ctx.body = results;
 });
 
 const vmParam = function (vmId, ctx, next) {
@@ -168,13 +228,7 @@ module.exports = function () {
     router.use("/vm/:vm/api", apiWrapper);
     router.get("/vm/:vm/robot.js", robotJS);
     router.get("/vm/:vm/", robotHTML);
-    router.get("/vm/:vm/api/mouseMove", mouseMove);
-    router.get("/vm/:vm/api/smoothMouseMove", smoothMouseMove);
-    router.get("/vm/:vm/api/mousePress", mousePress);
-    router.get("/vm/:vm/api/mouseRelease", mouseRelease);
-    router.get("/vm/:vm/api/mouseWheel", mouseWheel);
-    router.get("/vm/:vm/api/keyboardSendScancodes", keyboardSendScancodes);
-    router.get("/vm/:vm/api/calibrate", calibrate);
+    router.get("/vm/:vm/api/executeActions", executeActions);
 
     return router;
 };

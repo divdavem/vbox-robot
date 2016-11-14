@@ -23,6 +23,8 @@ if (!callbackFunctions) {
     };
 }
 
+var emptyFunction = function () {};
+
 module.exports = function (methodName, args, callback) {
     var data = encodeURIComponent(JSON.stringify(args));
     var script = document.createElement("script");
@@ -30,10 +32,17 @@ module.exports = function (methodName, args, callback) {
     callbackFunctions.counter++;
     callbackFunctions[id] = function (result) {
         delete callbackFunctions[id];
+        script.onload = script.onerror = emptyFunction;
         script.parentNode.removeChild(script);
         callback(result);
     };
-    script.src = [SERVER_URL, "/", methodName, "?callback=__vboxRobotCallbacks%5B", id, "%5D&data=", data, "&ts=", new Date().getTime()].join("");
+    var src = script.src = [SERVER_URL, "/", methodName, "?callback=__vboxRobotCallbacks%5B", id, "%5D&data=", data, "&ts=", new Date().getTime()].join("");
+    script.onload = script.onerror = function () {
+        callbackFunctions[id]({
+            success: false,
+            result: "Error while loading " + src
+        });
+    };
     // Note that SERVER_URL is replaced with a string litteral containing the actual url of the server when the server sends the JS file
     (document.head || document.getElementsByTagName("head")[0]).appendChild(script);
 };
