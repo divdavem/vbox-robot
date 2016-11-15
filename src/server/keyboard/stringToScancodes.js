@@ -14,11 +14,11 @@
  */
 "use strict";
 
-var keys = require("./keys");
-var layout = require("./layout");
-var layoutKeyPress = layout.keyPress;
-var layoutKeyRelease = layout.keyRelease;
-var mapKeys = {
+const keys = require("./keys");
+const layout = require("./layout");
+const layoutKeyPress = layout.keyPress;
+const layoutKeyRelease = layout.keyRelease;
+const mapKeys = {
     "CTRL" : "CONTROL",
     "\t" : "TAB",
     " " : "SPACE",
@@ -42,16 +42,16 @@ var mapKeys = {
 };
 
 module.exports = function (text) {
-    var result = [];
+    let result = [];
     if (!text) {
         return result;
     }
-    var parts = text.match(/(\[[^\]]+\])|([^\[])/g);
-    for (var i = 0, l = parts.length; i < l; i++) {
-        var key = parts[i];
-        var shift = false;
-        var keyPress = true;
-        var keyRelease = true;
+    const parts = text.match(/(\[[^\]]+\])|([^\[])/g);
+    for (let i = 0, l = parts.length; i < l; i++) {
+        let key = parts[i];
+        let shift = false;
+        let keyPress = true;
+        let keyRelease = true;
         if (key.length > 1) {
             // remove '[' and ']', and convert to upper case
             key = key.substr(1, key.length - 2).toUpperCase();
@@ -71,13 +71,13 @@ module.exports = function (text) {
             shift = (key != key.toLowerCase());
             key = key.toUpperCase();
         }
-        var replaceKey = mapKeys[key];
+        const replaceKey = mapKeys[key];
         if (replaceKey != null) {
             key = replaceKey;
         }
-        var keyCode = keys["VK_" + key];
+        const keyCode = keys[`VK_${key}`];
         if (keyCode == null || layoutKeyPress[keyCode] == null) {
-            throw new Error("Unknown key " + key);
+            throw new Error(`Unknown key ${key}`);
         }
         if (shift) {
             result = result.concat(layoutKeyPress[keys.VK_SHIFT]);

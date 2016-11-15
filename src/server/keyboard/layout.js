@@ -14,16 +14,16 @@
  */
 "use strict";
 
-var keys = require("./keys");
-var keyPress = exports.keyPress = {};
-var keyRelease = exports.keyRelease = {};
+const keys = require("./keys");
+const keyPress = exports.keyPress = {};
+const keyRelease = exports.keyRelease = {};
 
-var setShortCode = function(keyCode, scanCode) {
+const setShortCode = function(keyCode, scanCode) {
     keyPress[keyCode] = [scanCode];
     keyRelease[keyCode] = [scanCode | 0x80];
 };
 
-var setExtCode = function(keyCode, scanCode) {
+const setExtCode = function(keyCode, scanCode) {
     keyPress[keyCode] = [0xe0, scanCode];
     keyRelease[keyCode] = [0xe0, scanCode | 0x80];
 };

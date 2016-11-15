@@ -34,8 +34,21 @@ const BUTTON3_MASK = 4;
 const wait = require("../wait");
 const calibrate = require("./calibration");
 const checkInt = require("./checkInt");
+const keyboardLayout = require("./keyboard/layout");
+const stringToScancodes = require("./keyboard/stringToScancodes");
 
-const robotHTML = co.wrap(function *(ctx){
+const checkArray = function (data) {
+    if (!Array.isArray(data)) {
+        throw new Error(`Expected an array: ${data}`);
+    }
+    return data;
+};
+
+const checkString = function (data) {
+    return String(data);
+};
+
+const robotHTML = co.wrap(function * (ctx){
     if (! ctx.path.endsWith("/")) {
         ctx.redirect(`${ctx.path}/`);
         return;
@@ -45,7 +58,7 @@ const robotHTML = co.wrap(function *(ctx){
     ctx.body = yield readFile(path.join(__dirname,"..","browser", "index.html"));
 });
 
-const robotJS = co.wrap(function *(ctx){
+const robotJS = co.wrap(function * (ctx){
     ctx.set(commonHeaders);
     ctx.type = "js";
     const apiRootURL = url.format({
@@ -84,11 +97,11 @@ const apiWrapper = co.wrap(function * (ctx, next) {
     }
 });
 
-const mouseMove = co.wrap(function *(ctx) {
+const mouseMove = co.wrap(function * (ctx) {
     yield ctx.vm.mouseMove(checkInt(ctx.data[0]), checkInt(ctx.data[1]));
 });
 
-const smoothMouseMove = co.wrap(function *(ctx){
+const smoothMouseMove = co.wrap(function * (ctx){
     const data = ctx.data;
     const fromX = checkInt(data[0]);
     const fromY = checkInt(data[1]);
@@ -107,7 +120,7 @@ const smoothMouseMove = co.wrap(function *(ctx){
     yield ctx.vm.mouseMove(toX, toY);
 });
 
-const mouseButtonEvent = co.wrap(function *(buttonChangeFn, ctx){
+const mouseButtonEvent = co.wrap(function * (buttonChangeFn, ctx){
     const buttons = checkInt(ctx.data[0]);
     ctx.vm.mouseButtonsState = buttonChangeFn(buttons, ctx.vm.mouseButtonsState);
     yield ctx.vm.vboxMouse.putMouseEvent(0, 0, 0, 0, ctx.vm.mouseButtonsState);
@@ -141,14 +154,67 @@ const mouseReleaseButtonChange = function (buttons, mouseButtonsState) {
 };
 const mouseRelease = mouseButtonEvent.bind(null, mouseReleaseButtonChange);
 
-const mouseWheel = co.wrap(function *(ctx){
+const mouseWheel = co.wrap(function * (ctx){
     const vm = ctx.vm;
     yield vm.vboxMouse.putMouseEvent(0, 0, checkInt(ctx.data[0]), 0, vm.mouseButtonsState);
 });
 
 const keyboardSendScancodes = co.wrap(function * (ctx) {
-    const scancodes = ctx.data[0];
+    const scancodes = checkArray(ctx.data[0]);
     yield ctx.vm.vboxKeyboard.putScancodes(scancodes);
+});
+
+const createKeyEventHandler = function (eventName) {
+    const curLayout = keyboardLayout[eventName];
+    return co.wrap(function * (ctx) {
+        const keyCode = checkInt(ctx.data[0]);
+        const scancodes = curLayout[keyCode];
+        if (!scancodes) {
+            throw new Error(`Unknown key code: ${keyCode}`);
+        }
+        yield ctx.vm.vboxKeyboard.putScancodes(scancodes);
+    });
+};
+
+const type = co.wrap(function * (ctx) {
+    const text = checkString(ctx.data[0]);
+    const scancodes = stringToScancodes(text);
+    yield ctx.vm.vboxKeyboard.putScancodes(scancodes);
+});
+
+const pause = co.wrap(function * (ctx) {
+    const delay = checkInt(ctx.data[0]);
+    yield wait(delay);
+});
+
+const actionsMap = {
+    "mouseMove": mouseMove,
+    "smoothMouseMove": smoothMouseMove,
+    "mousePress": mousePress,
+    "mouseRelease": mouseRelease,
+    "mouseWheel": mouseWheel,
+    "keyboardSendScancodes": keyboardSendScancodes,
+    "keyPress": createKeyEventHandler("keyPress"),
+    "keyRelease": createKeyEventHandler("keyRelease"),
+    "calibrate": calibrate,
+    "type": type,
+    "pause": pause
+};
+
+const execute = co.wrap(function * (ctx) {
+    const actions = checkArray(ctx.data[0]);
+    for (let i = 0, l = actions.length; i < l; i++) {
+        let curAction = actions[i];
+        curAction = checkArray(curAction);
+        const actionName = checkString(curAction[0]);
+        const actionFn = actionsMap.hasOwnProperty(actionName) ? actionsMap[actionName] : null;
+        if (!actionFn) {
+            throw new Error(`Unknown action ${actionName}`);
+        }
+        ctx.data = curAction.slice(1);
+        console.log(`/vm/${ctx.vmId} execute (${1+i}/${l}) ${actionName} ${JSON.stringify(ctx.data)}`);
+        yield actionFn(ctx);
+    }
 });
 
 const vmParam = function (vmId, ctx, next) {
@@ -168,13 +234,7 @@ module.exports = function () {
     router.use("/vm/:vm/api", apiWrapper);
     router.get("/vm/:vm/robot.js", robotJS);
     router.get("/vm/:vm/", robotHTML);
-    router.get("/vm/:vm/api/mouseMove", mouseMove);
-    router.get("/vm/:vm/api/smoothMouseMove", smoothMouseMove);
-    router.get("/vm/:vm/api/mousePress", mousePress);
-    router.get("/vm/:vm/api/mouseRelease", mouseRelease);
-    router.get("/vm/:vm/api/mouseWheel", mouseWheel);
-    router.get("/vm/:vm/api/keyboardSendScancodes", keyboardSendScancodes);
-    router.get("/vm/:vm/api/calibrate", calibrate);
+    router.get("/vm/:vm/api/execute", execute);
 
     return router;
 };

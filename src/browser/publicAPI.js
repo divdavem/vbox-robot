@@ -17,60 +17,55 @@
 
 var normalizeCallback = require("./normalizeCallback");
 var request = require("./request");
-var calibrate = require("./calibrate");
-var keyboardLayout = require("./keyboard/layout");
-var stringToScancodes = require("./keyboard/stringToScancodes");
+var actions = exports.actions = {};
+
+var execute = exports.execute = function (actions, callback) {
+    request("execute", [actions], normalizeCallback(callback));
+};
 
 var slice = Array.prototype.slice;
-var createFunction = function (name, argsNumber) {
+var registerAction = function (name, argsNumber) {
+    actions[name] = function () {
+        const res = slice.call(arguments, 0, argsNumber);
+        res.unshift(name);
+        return res;
+    };
     exports[name] = function () {
-        request(name, slice.call(arguments, 0, argsNumber), normalizeCallback(arguments[argsNumber]));
+        execute([actions[name].apply(actions, slice.call(arguments, 0, argsNumber))], arguments[argsNumber]);
     };
 };
 
-createFunction("mouseMove", 2);
-createFunction("smoothMouseMove", 5);
-createFunction("mousePress", 1);
-createFunction("mouseRelease", 1);
-createFunction("mouseWheel", 1);
-createFunction("calibrate", 2);
-createFunction("keyboardSendScancodes", 1);
+registerAction("mouseMove", 2);
+registerAction("smoothMouseMove", 5);
+registerAction("mousePress", 1);
+registerAction("mouseRelease", 1);
+registerAction("mouseWheel", 1);
+registerAction("keyboardSendScancodes", 1);
+registerAction("keyPress", 1);
+registerAction("keyRelease", 1);
+registerAction("type", 1);
+registerAction("pause", 1);
+registerAction("calibrate", 2);
 
 exports.getOffset = function (callback) {
-    calibrate(normalizeCallback(callback));
-};
-
-var sendError = function (callback, error) {
-    setTimeout(function () {
-        callback({
-            success: false,
-            result: error
-        });
-    }, 1);
-};
-
-var createKeyEventFunction = function (eventName) {
-    var curLayout = keyboardLayout[eventName];
-    exports[eventName] = function (keyCode, callback) {
-        callback = normalizeCallback(callback);
-        var scancodes = curLayout[keyCode];
-        if (scancodes) {
-            request("keyboardSendScancodes", [scancodes], callback);
-        } else {
-            sendError(callback, "Unknown key code: " + keyCode);
-        }
-    };
-};
-
-createKeyEventFunction("keyPress");
-createKeyEventFunction("keyRelease");
-
-exports.type = function (text, callback) {
     callback = normalizeCallback(callback);
-    try {
-        var scancodes = stringToScancodes(text);
-        request("keyboardSendScancodes", [scancodes], callback);
-    } catch (error) {
-        sendError(callback, error + "");
-    }
+    var div = document.createElement("div");
+    var border = 30;
+    div.style.cssText = "display:block;position:absolute;background-color:rgb(255, 0, 0);border:" + border
+            + "px solid rgb(100, 100, 100);left:0px;top:0px;right:0px;bottom:0px;cursor:none;z-index:999999;";
+    document.body.appendChild(div);
+    // wait some time for the browser to display the element
+    setTimeout(function () {
+        exports.calibrate(div.offsetWidth - 2 * border, div.offsetHeight - 2 * border, function (response) {
+            div.parentNode.removeChild(div);
+            if (response.success) {
+                var result = response.result;
+                response.result = {
+                    x : result.x - border,
+                    y : result.y - border
+                };
+            }
+            callback(response);
+        });
+    }, 200);
 };

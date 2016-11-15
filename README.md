@@ -241,11 +241,48 @@ Valid key codes are the constants starting with `VK_` as listed in
 
 Releases a given key.
 
-* `type (text: String, callback: String)`
+**The remaining methods are only present in the API of `vbox-robot` and are not present in the API of the [Selenium Java Robot](https://github.com/attester/selenium-java-robot),
+and the [Robot Server](https://github.com/attester/robot-server):**
+
+* `type (text: String, callback: Callback)`
 
 Send multiple keys, as specified in the given text, one after the other.
-Note that this last method is not present in the API of the [Selenium Java Robot](https://github.com/attester/selenium-java-robot),
-and the [Robot Server](https://github.com/attester/robot-server).
+
+* `pause (delay: Number, callback: Callback)`
+
+Waits for the given delay in milliseconds.
+
+* `executeActions (actions: Array, callback: Callback)`
+
+Executes several actions sequentially. Each item of the `actions` array should contain the result of a method from the
+`SeleniumJavaRobot.actions` object. The following methods are available:
+    * `SeleniumJavaRobot.actions.mouseMove`
+    * `SeleniumJavaRobot.actions.smoothMouseMove`
+    * `SeleniumJavaRobot.actions.mousePress`
+    * `SeleniumJavaRobot.actions.mouseRelease`
+    * `SeleniumJavaRobot.actions.mouseWheel`
+    * `SeleniumJavaRobot.actions.keyPress`
+    * `SeleniumJavaRobot.actions.keyRelease`
+    * `SeleniumJavaRobot.actions.type`
+    * `SeleniumJavaRobot.actions.pause`
+
+They have the same signature as the methods available on `SeleniumJavaRobot`, except for the callback parameter, which
+is not present (as the actions are not executed until they are sent to `executeActions`).
+
+For example:
+
+```js
+SeleniumJavaRobot.executeActions([
+    SeleniumJavaRobot.actions.mouseMove(150, 200),
+    SeleniumJavaRobot.actions.mousePress(16),
+    SeleniumJavaRobot.actions.mouseRelease(16),
+    SeleniumJavaRobot.actions.type("Hello world!")
+], function (response) {
+    if (response.success) {
+        // here, response.result contains an array with the result of each action, in the same order as the actions
+    }
+});
+```
 
 ## License
 
